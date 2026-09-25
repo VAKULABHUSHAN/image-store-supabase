@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../main.dart';
 
 // 👉 make sure this is already initialized in main.dart
 final supabase = Supabase.instance.client;
@@ -50,15 +51,53 @@ class _SignupPageState extends State<SignupPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryTextColor = isDark ? Colors.white : const Color(0xFF1A1A24);
+    final secondaryTextColor = isDark ? Colors.white70 : const Color(0xFF555566);
+    final iconColor = isDark ? Colors.white70 : const Color(0xFF666677);
+    final cardBg = isDark ? Colors.white.withOpacity(0.05) : Colors.white.withOpacity(0.85);
+    final fieldBg = isDark ? Colors.white.withOpacity(0.05) : const Color(0xFFF0EFFF);
+    final cardBorder = isDark ? Colors.white12 : Colors.black12;
+
     return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: IconThemeData(color: primaryTextColor),
+        actions: [
+          ValueListenableBuilder<ThemeMode>(
+            valueListenable: themeNotifier,
+            builder: (context, mode, _) {
+              return IconButton(
+                icon: Icon(
+                  mode == ThemeMode.dark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                  color: primaryTextColor,
+                ),
+                tooltip: mode == ThemeMode.dark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
+                onPressed: () {
+                  themeNotifier.value =
+                      mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+                },
+              );
+            },
+          ),
+        ],
+      ),
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [
-              Color(0xFF6C63FF),
-              Color(0xFF3F3D56),
-              Color(0xFF1A1A24),
-            ],
+            colors: isDark
+                ? const [
+                    Color(0xFF6C63FF),
+                    Color(0xFF3F3D56),
+                    Color(0xFF1A1A24),
+                  ]
+                : const [
+                    Color(0xFF6C63FF),
+                    Color(0xFFD6D3FF),
+                    Color(0xFFF0EFFF),
+                  ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -68,22 +107,22 @@ class _SignupPageState extends State<SignupPage> {
             padding: const EdgeInsets.all(20),
             child: Column(
               children: [
-                const SizedBox(height: 40),
+                const SizedBox(height: 60),
 
-                const Text(
+                Text(
                   "Create Account",
                   style: TextStyle(
                     fontSize: 30,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: primaryTextColor,
                   ),
                 ),
 
                 const SizedBox(height: 8),
 
-                const Text(
+                Text(
                   "Join PersonaLens 🚀",
-                  style: TextStyle(color: Colors.white70),
+                  style: TextStyle(color: secondaryTextColor),
                 ),
 
                 const SizedBox(height: 40),
@@ -92,22 +131,31 @@ class _SignupPageState extends State<SignupPage> {
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
+                    color: cardBg,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white12),
+                    border: Border.all(color: cardBorder),
+                    boxShadow: isDark
+                        ? []
+                        : [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 15,
+                              offset: const Offset(0, 5),
+                            ),
+                          ],
                   ),
                   child: Column(
                     children: [
                       // 👤 Username
                       TextField(
                         controller: _usernameController,
-                        style: const TextStyle(color: Colors.white),
+                        style: TextStyle(color: primaryTextColor),
                         decoration: InputDecoration(
-                          prefixIcon: const Icon(Icons.person, color: Colors.white70),
+                          prefixIcon: Icon(Icons.person, color: iconColor),
                           labelText: 'Username',
-                          labelStyle: const TextStyle(color: Colors.white70),
+                          labelStyle: TextStyle(color: secondaryTextColor),
                           filled: true,
-                          fillColor: Colors.white.withOpacity(0.05),
+                          fillColor: fieldBg,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(14),
                             borderSide: BorderSide.none,
@@ -121,13 +169,13 @@ class _SignupPageState extends State<SignupPage> {
                       TextField(
                         controller: _passwordController,
                         obscureText: _obscurePassword,
-                        style: const TextStyle(color: Colors.white),
+                        style: TextStyle(color: primaryTextColor),
                         decoration: InputDecoration(
-                          prefixIcon: const Icon(Icons.lock, color: Colors.white70),
+                          prefixIcon: Icon(Icons.lock, color: iconColor),
                           labelText: 'Password',
-                          labelStyle: const TextStyle(color: Colors.white70),
+                          labelStyle: TextStyle(color: secondaryTextColor),
                           filled: true,
-                          fillColor: Colors.white.withOpacity(0.05),
+                          fillColor: fieldBg,
 
                           // 👁️ Eye Icon
                           suffixIcon: IconButton(
@@ -135,7 +183,7 @@ class _SignupPageState extends State<SignupPage> {
                               _obscurePassword
                                   ? Icons.visibility_off
                                   : Icons.visibility,
-                              color: Colors.white70,
+                              color: iconColor,
                             ),
                             onPressed: () {
                               setState(() {
@@ -161,6 +209,7 @@ class _SignupPageState extends State<SignupPage> {
                           onPressed: _loading ? null : _signup,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF6C63FF),
+                            foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),
                             ),
@@ -169,12 +218,12 @@ class _SignupPageState extends State<SignupPage> {
                           child: _loading
                               ? const CircularProgressIndicator(color: Colors.white)
                               : const Text(
-                            "Sign Up",
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                                  "Sign Up",
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
                         ),
                       ),
                     ],
@@ -186,9 +235,9 @@ class _SignupPageState extends State<SignupPage> {
                 // 🔙 Back to Login
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text(
+                  child: Text(
                     "Already have an account? Login",
-                    style: TextStyle(color: Colors.white70),
+                    style: TextStyle(color: secondaryTextColor),
                   ),
                 ),
               ],

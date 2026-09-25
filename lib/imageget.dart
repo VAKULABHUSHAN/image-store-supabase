@@ -364,18 +364,37 @@ class _UploadPageState extends State<UploadPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : const Color(0xFF1A1A24);
+    final iconColor = isDark ? Colors.white70 : const Color(0xFF1A1A24);
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F14),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text('PersonaLens',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Colors.white, letterSpacing: 1.2)),
+        title: Text('PersonaLens',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: textColor, letterSpacing: 1.2)),
         actions: [
+          ValueListenableBuilder<ThemeMode>(
+            valueListenable: themeNotifier,
+            builder: (context, mode, _) {
+              return IconButton(
+                icon: Icon(
+                  mode == ThemeMode.dark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                  color: iconColor,
+                ),
+                tooltip: mode == ThemeMode.dark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
+                onPressed: () {
+                  themeNotifier.value =
+                      mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+                },
+              );
+            },
+          ),
           IconButton(
-            icon: const Icon(Icons.photo_library_rounded, color: Colors.white70),
+            icon: Icon(Icons.photo_library_rounded, color: iconColor),
             tooltip: 'View Gallery',
             onPressed: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const ImageGalleryPage())),
@@ -751,16 +770,36 @@ class _ImageGalleryPageState extends State<ImageGalleryPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : const Color(0xFF1A1A24);
+    final iconColor = isDark ? Colors.white70 : const Color(0xFF1A1A24);
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F14),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text('My Gallery',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Colors.white)),
+        title: Text('My Gallery',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: textColor)),
         actions: [
+          ValueListenableBuilder<ThemeMode>(
+            valueListenable: themeNotifier,
+            builder: (context, mode, _) {
+              return IconButton(
+                icon: Icon(
+                  mode == ThemeMode.dark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                  color: iconColor,
+                ),
+                tooltip: mode == ThemeMode.dark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
+                onPressed: () {
+                  themeNotifier.value =
+                      mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+                },
+              );
+            },
+          ),
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: Colors.white70),
+            icon: Icon(Icons.refresh_rounded, color: iconColor),
             onPressed: _loadImages,
           ),
         ],
@@ -1376,12 +1415,27 @@ class _ProfileCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1A1A24) : Colors.white;
+    final primaryText = isDark ? Colors.white : const Color(0xFF1A1A24);
+    final subText = isDark ? Colors.white38 : const Color(0xFF777788);
+    final cardBorder = isDark ? Colors.white12 : Colors.black12;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A24),
+        color: cardBg,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white12),
+        border: Border.all(color: cardBorder),
+        boxShadow: isDark
+            ? []
+            : [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
       ),
       child: Row(
         children: [
@@ -1398,17 +1452,18 @@ class _ProfileCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Logged in as', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                Text('Logged in as', style: TextStyle(color: subText, fontSize: 12)),
                 const SizedBox(height: 4),
                 Text(email ?? 'Loading…',
-                    style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
+                    style: TextStyle(color: primaryText, fontSize: 15, fontWeight: FontWeight.w600),
                     overflow: TextOverflow.ellipsis),
               ],
             ),
           ),
           IconButton(
             onPressed: onLogout,
-            icon: const Icon(Icons.logout, color: Colors.redAccent),
+            icon: Icon(Icons.logout, color: isDark ? Colors.redAccent : Colors.red),
+            tooltip: 'Logout',
           ),
         ],
       ),
