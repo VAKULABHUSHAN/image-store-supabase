@@ -11,9 +11,10 @@ class ApiService {
   static final ApiService instance = ApiService._internal();
   ApiService._internal();
 
+  String get baseUrl => _baseUrl;
   String get _baseUrl => backendApiUrl;
 
-  Future<Map<String, String>> _getAuthHeaders() async {
+  Future<Map<String, String>> getAuthHeaders() async {
     final token = supabase.auth.currentSession?.accessToken;
     return {
       if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
@@ -33,7 +34,7 @@ class ApiService {
   // 2. GET /me
   Future<Map<String, dynamic>?> getMe() async {
     try {
-      final headers = await _getAuthHeaders();
+      final headers = await getAuthHeaders();
       final res = await http.get(Uri.parse('$_baseUrl/me'), headers: headers);
       if (res.statusCode == 200) {
         return jsonDecode(res.body) as Map<String, dynamic>;
@@ -47,7 +48,7 @@ class ApiService {
   // 3. GET /voice/status
   Future<bool> getVoiceStatus() async {
     try {
-      final headers = await _getAuthHeaders();
+      final headers = await getAuthHeaders();
       final res = await http.get(Uri.parse('$_baseUrl/voice/status'), headers: headers);
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
@@ -62,7 +63,7 @@ class ApiService {
   // 4. POST /voice/enroll
   Future<bool> enrollVoice(File audioFile) async {
     try {
-      final headers = await _getAuthHeaders();
+      final headers = await getAuthHeaders();
       final request = http.MultipartRequest('POST', Uri.parse('$_baseUrl/voice/enroll'));
       request.headers.addAll(headers);
       request.files.add(await http.MultipartFile.fromPath('audio', audioFile.path));
@@ -82,7 +83,7 @@ class ApiService {
   // 5. POST /recognize?wait=true
   Future<List<Map<String, dynamic>>> recognizeFace(File imageFile, {bool wait = true}) async {
     try {
-      final headers = await _getAuthHeaders();
+      final headers = await getAuthHeaders();
       final uri = Uri.parse('$_baseUrl/recognize?wait=$wait');
       final request = http.MultipartRequest('POST', uri);
       request.headers.addAll(headers);
@@ -116,7 +117,7 @@ class ApiService {
     required File imageFile,
   }) async {
     try {
-      final headers = await _getAuthHeaders();
+      final headers = await getAuthHeaders();
       final request = http.MultipartRequest('POST', Uri.parse('$_baseUrl/person'));
       request.headers.addAll(headers);
       request.fields['name'] = name;
@@ -151,7 +152,7 @@ class ApiService {
     required File imageFile,
   }) async {
     try {
-      final headers = await _getAuthHeaders();
+      final headers = await getAuthHeaders();
       final request = http.MultipartRequest('POST', Uri.parse('$_baseUrl/add-face'));
       request.headers.addAll(headers);
       request.fields['person_id'] = personId;
@@ -178,10 +179,176 @@ class ApiService {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // SECTION 11.5: GALLERY ENDPOINTS
+  // ═══════════════════════════════════════════════════════════════
+
+  // 1. POST /gallery (Upload image to gallery and identify faces)
+  Future<Map<String, dynamic>?> uploadToGallery(File imageFile, {String? caption}) async {
+    try {
+      final headers = await getAuthHeaders();
+      final request = http.MultipartRequest('POST', Uri.parse('$_baseUrl/gallery'));
+      request.headers.addAll(headers);
+      if (caption != null && caption.isNotEmpty) {
+        request.fields['caption'] = caption;
+      }
+      final ext = imageFile.path.toLowerCase();
+      final subType = ext.endsWith('.png') ? 'png' : 'jpeg';
+      request.files.add(await http.MultipartFile.fromPath(
+        'file',
+        imageFile.path,
+        contentType: MediaType('image', subType),
+      ));
+
+      final streamedRes = await request.send();
+      final res = await http.Response.fromStream(streamedRes);
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      } else {
+        final err = jsonDecode(res.body);
+        throw Exception(err['detail'] ?? 'Gallery upload failed.');
+      }
+    } catch (e) {
+      print('uploadToGallery error: $e');
+      rethrow;
+    }
+  }
+
+  // 2. GET /gallery (List gallery images with optional filters)
+  Future<Map<String, dynamic>> getGallery({
+    int limit = 50,
+    int offset = 0,
+    String? personId,
+    bool? unidentified,
+  }) async {
+    try {
+      final headers = await getAuthHeaders();
+      final queryParams = <String, String>{
+        'limit': limit.toString(),
+        'offset': offset.toString(),
+        if (personId != null && personId.isNotEmpty) 'person_id': personId,
+        if (unidentified == true) 'unidentified': 'true',
+      };
+      final uri = Uri.parse('$_baseUrl/gallery').replace(queryParameters: queryParams);
+      final res = await http.get(uri, headers: headers);
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      print('getGallery error: $e');
+    }
+    return {'images': [], 'total': 0};
+  }
+
+  // 3. GET /gallery/{id} (One image detail)
+  Future<Map<String, dynamic>?> getGalleryImageDetail(String id) async {
+    try {
+      final headers = await getAuthHeaders();
+      final res = await http.get(Uri.parse('$_baseUrl/gallery/$id'), headers: headers);
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      print('getGalleryImageDetail error: $e');
+    }
+    return null;
+  }
+
+  // 4. DELETE /gallery/{id} (Delete image & stored faces)
+  Future<bool> deleteGalleryImage(String id) async {
+    try {
+      final headers = await getAuthHeaders();
+      final request = http.Request('DELETE', Uri.parse('$_baseUrl/gallery/$id'))..headers.addAll(headers);
+      final streamedRes = await request.send();
+      final res = await http.Response.fromStream(streamedRes);
+      return res.statusCode == 200;
+    } catch (e) {
+      print('deleteGalleryImage error: $e');
+      return false;
+    }
+  }
+
+  // 5. POST /gallery/faces/{face_id}/assign (Assign face identity)
+  Future<Map<String, dynamic>?> assignGalleryFace({
+    required String faceId,
+    String? personId,
+    String? name,
+    String? relationship,
+    bool enroll = true,
+  }) async {
+    try {
+      final headers = await getAuthHeaders();
+      final request = http.MultipartRequest('POST', Uri.parse('$_baseUrl/gallery/faces/$faceId/assign'));
+      request.headers.addAll(headers);
+      if (personId != null && personId.isNotEmpty) {
+        request.fields['person_id'] = personId;
+      }
+      if (name != null && name.isNotEmpty) {
+        request.fields['name'] = name;
+      }
+      if (relationship != null && relationship.isNotEmpty) {
+        request.fields['relationship'] = relationship;
+      }
+      request.fields['enroll'] = enroll ? 'true' : 'false';
+
+      final streamedRes = await request.send();
+      final res = await http.Response.fromStream(streamedRes);
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      } else {
+        final err = jsonDecode(res.body);
+        throw Exception(err['detail'] ?? 'Assign face failed.');
+      }
+    } catch (e) {
+      print('assignGalleryFace error: $e');
+      rethrow;
+    }
+  }
+
+  // 6. POST /gallery/reidentify (Re-try unidentified faces)
+  Future<Map<String, dynamic>> reidentifyGalleryFaces() async {
+    try {
+      final headers = await getAuthHeaders();
+      final res = await http.post(Uri.parse('$_baseUrl/gallery/reidentify'), headers: headers);
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      print('reidentifyGalleryFaces error: $e');
+    }
+    return {'checked': 0, 'matched': 0};
+  }
+
+  // 7. POST /gallery/search (Search stored photos by face)
+  Future<List<Map<String, dynamic>>> searchGalleryByFace(File imageFile) async {
+    try {
+      final headers = await getAuthHeaders();
+      final request = http.MultipartRequest('POST', Uri.parse('$_baseUrl/gallery/search'));
+      request.headers.addAll(headers);
+      final ext = imageFile.path.toLowerCase();
+      final subType = ext.endsWith('.png') ? 'png' : 'jpeg';
+      request.files.add(await http.MultipartFile.fromPath(
+        'file',
+        imageFile.path,
+        contentType: MediaType('image', subType),
+      ));
+
+      final streamedRes = await request.send();
+      final res = await http.Response.fromStream(streamedRes);
+      if (res.statusCode == 200) {
+        final List list = jsonDecode(res.body);
+        return list.cast<Map<String, dynamic>>();
+      }
+    } catch (e) {
+      print('searchGalleryByFace error: $e');
+    }
+    return [];
+  }
+
   // 6. POST /session/start
   Future<Map<String, dynamic>?> startSession(String mode) async {
     try {
-      final headers = await _getAuthHeaders();
+      final headers = await getAuthHeaders();
       final request = http.MultipartRequest('POST', Uri.parse('$_baseUrl/session/start'));
       request.headers.addAll(headers);
       request.fields['mode'] = mode;
@@ -205,7 +372,7 @@ class ApiService {
     File? faceImageFile,
   }) async {
     try {
-      final headers = await _getAuthHeaders();
+      final headers = await getAuthHeaders();
       final request = http.MultipartRequest('POST', Uri.parse('$_baseUrl/session/$sessionId/end'));
       request.headers.addAll(headers);
 
@@ -239,7 +406,7 @@ class ApiService {
   // 8. GET /session/{id} (Poll session result)
   Future<Map<String, dynamic>?> getSession(String sessionId, {bool includeFace = false}) async {
     try {
-      final headers = await _getAuthHeaders();
+      final headers = await getAuthHeaders();
       final uri = Uri.parse('$_baseUrl/session/$sessionId?include_face=$includeFace');
       final res = await http.get(uri, headers: headers);
       if (res.statusCode == 200) {
@@ -261,7 +428,7 @@ class ApiService {
     bool useSessionFace = false,
   }) async {
     try {
-      final headers = await _getAuthHeaders();
+      final headers = await getAuthHeaders();
       final request = http.MultipartRequest('POST', Uri.parse('$_baseUrl/person/finalize'));
       request.headers.addAll(headers);
 
@@ -293,7 +460,7 @@ class ApiService {
   // 10. GET /people
   Future<List<Map<String, dynamic>>> getPeople() async {
     try {
-      final headers = await _getAuthHeaders();
+      final headers = await getAuthHeaders();
       final res = await http.get(Uri.parse('$_baseUrl/people'), headers: headers);
       if (res.statusCode == 200) {
         final List list = jsonDecode(res.body);
@@ -308,7 +475,7 @@ class ApiService {
   // 11. GET /sessions
   Future<List<Map<String, dynamic>>> getSessions() async {
     try {
-      final headers = await _getAuthHeaders();
+      final headers = await getAuthHeaders();
       final res = await http.get(Uri.parse('$_baseUrl/sessions'), headers: headers);
       if (res.statusCode == 200) {
         final List list = jsonDecode(res.body);
