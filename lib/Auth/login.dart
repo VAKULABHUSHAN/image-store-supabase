@@ -12,16 +12,20 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _emailController = TextEditingController();
+  final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
+  bool _obscurePassword = true;
   bool _loading = false;
 
   Future<void> _login() async {
     setState(() => _loading = true);
 
     try {
+      final input = _usernameController.text.trim();
+      final email = input.contains('@') ? input : '$input@imagestore.local';
+
       final res = await supabase.auth.signInWithPassword(
-        email: _emailController.text.trim(),
+        email: email,
         password: _passwordController.text.trim(),
       );
 
@@ -95,14 +99,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   child: Column(
                     children: [
-                      // 📧 Email Field
+                      // 👤 Username Field
                       TextField(
-                        controller: _emailController,
+                        controller: _usernameController,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
                           prefixIcon:
-                          const Icon(Icons.email, color: Colors.white70),
-                          labelText: 'Email',
+                          const Icon(Icons.person, color: Colors.white70),
+                          labelText: 'Username',
                           labelStyle:
                           const TextStyle(color: Colors.white70),
                           filled: true,
@@ -119,7 +123,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       // 🔒 Password Field
                       TextField(
                         controller: _passwordController,
-                        obscureText: true,
+                        obscureText: _obscurePassword,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
                           prefixIcon:
@@ -127,6 +131,19 @@ class _LoginScreenState extends State<LoginScreen> {
                           labelText: 'Password',
                           labelStyle:
                           const TextStyle(color: Colors.white70),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
+                              color: Colors.white70,
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _obscurePassword = !_obscurePassword;
+                              });
+                            },
+                          ),
                           filled: true,
                           fillColor: Colors.white.withOpacity(0.05),
                           border: OutlineInputBorder(

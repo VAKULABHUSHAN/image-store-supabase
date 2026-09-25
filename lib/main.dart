@@ -1,17 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'imageget.dart';
 import 'Auth/login.dart';
 
 // 🔑 SUPABASE CONFIG
-const String _supabaseUrl = 'https://pffshbkpvbxakvblflzw.supabase.co';
+const String _supabaseUrl = 'http://192.168.137.43:8000';
 const String _supabaseAnonKey =
-'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBmZnNoYmtwdmJ4YWt2YmxmbHp3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2MDUyMTIsImV4cCI6MjA5MDE4MTIxMn0.4rUiGa7rBz7dwloK6nXHqKx2_2nJj1lQpGM7PZQXMLY'
+    'eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJyb2xlIjogImFub24iLCAiaXNzIjogInN1cGFiYXNlLWxvY2FsIiwgImlhdCI6IDE3MDAwMDAwMDAsICJleHAiOiAyNDAwMDAwMDAwfQ.8SVrnY6VF8nCNdoxmieaLm8Q4mbDOCTRDIm9wxOJg6s';
 
-;
 
-void main() async {
+void main() async {  
   WidgetsFlutterBinding.ensureInitialized();
 
   await Supabase.initialize(

@@ -12,7 +12,7 @@ class SignupPage extends StatefulWidget {
 }
 
 class _SignupPageState extends State<SignupPage> {
-  final _emailController = TextEditingController();
+  final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _loading = false;
@@ -21,9 +21,13 @@ class _SignupPageState extends State<SignupPage> {
     setState(() => _loading = true);
 
     try {
+      final rawUser = _usernameController.text.trim();
+      final email = rawUser.contains('@') ? rawUser : '$rawUser@imagestore.local';
+
       final res = await supabase.auth.signUp(
-        email: _emailController.text.trim(),
+        email: email,
         password: _passwordController.text.trim(),
+        data: {'username': rawUser},
       );
 
       if (res.user != null) {
@@ -94,13 +98,13 @@ class _SignupPageState extends State<SignupPage> {
                   ),
                   child: Column(
                     children: [
-                      // 📧 Email
+                      // 👤 Username
                       TextField(
-                        controller: _emailController,
+                        controller: _usernameController,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
-                          prefixIcon: const Icon(Icons.email, color: Colors.white70),
-                          labelText: 'Email',
+                          prefixIcon: const Icon(Icons.person, color: Colors.white70),
+                          labelText: 'Username',
                           labelStyle: const TextStyle(color: Colors.white70),
                           filled: true,
                           fillColor: Colors.white.withOpacity(0.05),

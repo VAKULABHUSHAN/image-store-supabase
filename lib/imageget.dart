@@ -50,7 +50,14 @@ class _UploadPageState extends State<UploadPage> {
 
   void _getUser() {
     final user = supabase.auth.currentUser;
-    setState(() => _userEmail = user?.email ?? 'Guest');
+    final metaUsername = user?.userMetadata?['username'] as String?;
+    final rawEmail = user?.email;
+    final display = metaUsername ??
+        (rawEmail != null && rawEmail.endsWith('@imagestore.local')
+            ? rawEmail.split('@').first
+            : rawEmail) ??
+        'Guest';
+    setState(() => _userEmail = display);
   }
 
   Future<void> _pickImage(ImageSource source) async {
