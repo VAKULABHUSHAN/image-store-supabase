@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'Auth/login.dart';
+import 'main_navigation_shell.dart';
 
 // 🔑 SUPABASE CONFIG
 const String _supabaseUrl = 'http://192.168.137.43:8000';
@@ -70,7 +71,9 @@ class MyApp extends StatelessWidget {
             ),
             useMaterial3: true,
           ),
-          home: const LoginScreen(),
+          home: supabase.auth.currentUser != null
+              ? const MainNavigationShell()
+              : const LoginScreen(),
         );
       },
     );

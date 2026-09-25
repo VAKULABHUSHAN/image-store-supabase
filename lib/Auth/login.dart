@@ -3,6 +3,7 @@ import 'package:imagestore/Auth/signup.dart' hide supabase;
 
 import '../imageget.dart';
 import '../main.dart';
+import '../main_navigation_shell.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -30,12 +31,12 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       if (res.user != null) {
-        // ✅ Navigate to UploadPage
+        // ✅ Navigate to MainNavigationShell
         if (!mounted) return;
 
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => const UploadPage()),
+          MaterialPageRoute(builder: (_) => const MainNavigationShell()),
         );
       }
     } catch (e) {
