@@ -23,12 +23,12 @@ class _SignupPageState extends State<SignupPage> {
 
     try {
       final rawUser = _usernameController.text.trim();
-      final email = rawUser.contains('@') ? rawUser : '$rawUser@imagestore.local';
+      final email = rawUser.contains('@') ? rawUser : usernameToEmail(rawUser);
 
       final res = await supabase.auth.signUp(
         email: email,
         password: _passwordController.text.trim(),
-        data: {'username': rawUser},
+        data: {'full_name': rawUser, 'username': rawUser},
       );
 
       if (res.user != null) {

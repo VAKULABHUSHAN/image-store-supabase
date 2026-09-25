@@ -40,6 +40,11 @@ dependencies:
   http:
   camera:
   path_provider:
+  record: ^6.2.1
+  http_parser: ^4.0.2
+  speech_to_text: ^7.0.0
+  shared_preferences: ^2.2.0
+  web_socket_channel: ^2.4.0
 
 dev_dependencies:
   flutter_test:

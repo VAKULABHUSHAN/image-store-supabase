@@ -4,11 +4,15 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'Auth/login.dart';
 import 'main_navigation_shell.dart';
 
-// 🔑 SUPABASE CONFIG
+// 🔑 BACKEND & SUPABASE CONFIG
 const String _supabaseUrl = 'http://192.168.137.43:8000';
 const String _supabaseAnonKey =
     'eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJyb2xlIjogImFub24iLCAiaXNzIjogInN1cGFiYXNlLWxvY2FsIiwgImlhdCI6IDE3MDAwMDAwMDAsICJleHAiOiAyNDAwMDAwMDAwfQ.8SVrnY6VF8nCNdoxmieaLm8Q4mbDOCTRDIm9wxOJg6s';
 
+const String backendApiUrl = 'http://192.168.137.43:8120';
+const String backendWsUrl = 'ws://192.168.137.43:8120/ws/live';
+
+String usernameToEmail(String u) => '${u.trim().toLowerCase()}@persona-lens.local';
 
 void main() async {  
   WidgetsFlutterBinding.ensureInitialized();

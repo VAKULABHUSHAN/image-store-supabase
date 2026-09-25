@@ -4,6 +4,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'Auth/login.dart';
 import 'imageget.dart';
 import 'main.dart';
+import 'people_and_history_page.dart';
+import 'server_settings_dialog.dart';
+import 'voice_enrollment_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -287,6 +290,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       );
                     },
+                  ),
+                  Divider(height: 1, color: cardBorder),
+                  ListTile(
+                    leading: const Icon(Icons.record_voice_over_rounded, color: Color(0xFF6C63FF)),
+                    title: Text('Voice Profile Enrollment', style: TextStyle(color: primaryTextColor, fontWeight: FontWeight.w600)),
+                    subtitle: Text('Enroll host voice print for speaker identification', style: TextStyle(color: secondaryTextColor, fontSize: 13)),
+                    trailing: Icon(Icons.chevron_right_rounded, color: secondaryTextColor),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const VoiceEnrollmentScreen()),
+                      );
+                    },
+                  ),
+                  Divider(height: 1, color: cardBorder),
+                  ListTile(
+                    leading: const Icon(Icons.people_alt_rounded, color: Color(0xFF6C63FF)),
+                    title: Text('People & Memory History', style: TextStyle(color: primaryTextColor, fontWeight: FontWeight.w600)),
+                    subtitle: Text('View known people & past sessions', style: TextStyle(color: secondaryTextColor, fontSize: 13)),
+                    trailing: Icon(Icons.chevron_right_rounded, color: secondaryTextColor),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const PeopleAndHistoryPage()),
+                      );
+                    },
+                  ),
+                  Divider(height: 1, color: cardBorder),
+                  ListTile(
+                    leading: const Icon(Icons.dns_rounded, color: Color(0xFF6C63FF)),
+                    title: Text('Server Settings', style: TextStyle(color: primaryTextColor, fontWeight: FontWeight.w600)),
+                    subtitle: Text('Configure backend host IP & test health', style: TextStyle(color: secondaryTextColor, fontSize: 13)),
+                    trailing: Icon(Icons.chevron_right_rounded, color: secondaryTextColor),
+                    onTap: () => ServerSettingsDialog.show(context),
                   ),
                   Divider(height: 1, color: cardBorder),
                   ListTile(

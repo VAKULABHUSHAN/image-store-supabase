@@ -4,6 +4,7 @@ import 'package:imagestore/Auth/signup.dart' hide supabase;
 import '../imageget.dart';
 import '../main.dart';
 import '../main_navigation_shell.dart';
+import '../server_settings_dialog.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -23,7 +24,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final input = _usernameController.text.trim();
-      final email = input.contains('@') ? input : '$input@imagestore.local';
+      final email = input.contains('@') ? input : usernameToEmail(input);
 
       final res = await supabase.auth.signInWithPassword(
         email: email,
@@ -64,6 +65,11 @@ class _LoginScreenState extends State<LoginScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: Icon(Icons.dns_rounded, color: primaryTextColor),
+            tooltip: 'Server Settings',
+            onPressed: () => ServerSettingsDialog.show(context),
+          ),
           ValueListenableBuilder<ThemeMode>(
             valueListenable: themeNotifier,
             builder: (context, mode, _) {
