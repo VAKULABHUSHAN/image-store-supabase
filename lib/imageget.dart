@@ -1,8 +1,10 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'api_service.dart';
 import 'Auth/login.dart';
 import 'main.dart';
 import 'profile_page.dart';
@@ -37,11 +39,11 @@ class UploadPage extends StatefulWidget {
 class _UploadPageState extends State<UploadPage> {
   final ImagePicker _picker = ImagePicker();
 
-  File?   _selectedFile;
-  bool    _isUploading    = false;
+  File? _selectedFile;
+  bool _isIdentifying = false;
   String? _statusMessage;
-  double  _uploadProgress = 0;
   String? _userEmail;
+  List<Map<String, dynamic>> _recognizedFaces = [];
 
   @override
   void initState() {
@@ -54,7 +56,7 @@ class _UploadPageState extends State<UploadPage> {
     final metaUsername = user?.userMetadata?['username'] as String?;
     final rawEmail = user?.email;
     final display = metaUsername ??
-        (rawEmail != null && rawEmail.endsWith('@imagestore.local')
+        (rawEmail != null && rawEmail.endsWith('@persona-lens.local')
             ? rawEmail.split('@').first
             : rawEmail) ??
         'Guest';
@@ -65,317 +67,365 @@ class _UploadPageState extends State<UploadPage> {
     try {
       final XFile? xfile = await _picker.pickImage(
         source: source,
-        imageQuality: 80,
+        imageQuality: 85,
       );
       if (xfile == null) return;
+
       setState(() {
-        _selectedFile  = File(xfile.path);
+        _selectedFile = File(xfile.path);
         _statusMessage = null;
+        _recognizedFaces = [];
       });
+
+      _runFaceRecognition();
     } catch (e) {
       _showSnack('Failed to pick image: $e');
     }
   }
 
-  Future<List<dynamic>> _recognizeFace(File file) async {
-    try {
-      final uri     = Uri.parse('http://172.16.40.131:8120/recognize');
-      final request = http.MultipartRequest('POST', uri);
-
-      final token = supabase.auth.currentSession?.accessToken;
-      if (token != null) {
-        request.headers['Authorization'] = 'Bearer $token';
-      }
-
-      request.files.add(await http.MultipartFile.fromPath('file', file.path));
-
-      final response     = await request.send();
-      final responseBody = await response.stream.bytesToString();
-
-      if (response.statusCode == 200) return json.decode(responseBody);
-      throw Exception('Recognition failed: $responseBody');
-    } catch (e) {
-      debugPrint('RECOGNITION ERROR: $e');
-      return [];
-    }
-  }
-
-  Future<void> _uploadAndSave() async {
-    if (_selectedFile == null) {
-      _showSnack('Please select an image first.');
-      return;
-    }
-
-    final user = supabase.auth.currentUser;
-    if (user == null) {
-      _showSnack('Not logged in.');
-      return;
-    }
+  Future<void> _runFaceRecognition() async {
+    if (_selectedFile == null) return;
 
     setState(() {
-      _isUploading    = true;
-      _statusMessage  = 'Uploading…';
-      _uploadProgress = 0;
+      _isIdentifying = true;
+      _statusMessage = 'Identifying face(s)…';
+      _recognizedFaces = [];
     });
 
     try {
-      final fileName = '${user.id}/${DateTime.now().millisecondsSinceEpoch}.jpg';
-
-      setState(() => _uploadProgress = 0.2);
-      await supabase.storage.from('faces').upload(fileName, _selectedFile!);
-      setState(() => _uploadProgress = 0.4);
-
-      final imageUrl = supabase.storage.from('faces').getPublicUrl(fileName);
-      setState(() => _uploadProgress = 0.6);
-
-      setState(() => _statusMessage = 'Recognizing faces…');
-      final results = await _recognizeFace(_selectedFile!);
-      debugPrint('Recognition Results: $results');
-      setState(() => _uploadProgress = 0.8);
-
-      final String knownPersonId = await _resolvePersonFromRecognition(
-        results: results,
-        userId:  user.id,
-      );
-
-      await supabase.from('face_embeddings').insert({
-        'known_person_id': knownPersonId,
-        'image_url':       imageUrl,
-        'user_id':         user.id,
-      });
+      // POST /recognize?wait=true
+      final results = await ApiService.instance.recognizeFace(_selectedFile!, wait: true);
 
       setState(() {
-        _uploadProgress = 1.0;
-        _statusMessage  = '✅ Uploaded & Recognized!';
-        _selectedFile   = null;
+        _isIdentifying = false;
+        _recognizedFaces = results;
+        if (results.isEmpty) {
+          _statusMessage = 'No face found in this photo.';
+        } else {
+          _statusMessage = 'Identified ${results.length} face(s).';
+        }
       });
-
-      if (!mounted) return;
-      await _showRecognitionDialog(results);
-
-      await Future.delayed(const Duration(milliseconds: 300));
-      if (!mounted) return;
-
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const ImageGalleryPage()),
-      );
     } catch (e) {
-      debugPrint('UPLOAD ERROR: $e');
-      setState(() => _statusMessage = '❌ Error: $e');
-    } finally {
-      setState(() => _isUploading = false);
+      setState(() {
+        _isIdentifying = false;
+        _statusMessage = 'Recognition error: $e';
+      });
+      _showSnack('Recognition failed: $e');
     }
   }
 
-  Future<String> _resolvePersonFromRecognition({
-    required List<dynamic> results,
-    required String        userId,
-  }) async {
-    Map<String, dynamic>? bestMatch;
+  Future<void> _openSavePersonSheet() async {
+    if (_selectedFile == null) return;
 
-    for (final r in results) {
-      final name = (r['name'] as String?)?.trim() ?? '';
+    final nameController = TextEditingController();
+    String selectedRelationship = 'Friend';
+    bool isSaving = false;
+    final relationships = [
+      'Daughter',
+      'Son',
+      'Spouse',
+      'Grandchild',
+      'Sibling',
+      'Friend',
+      'Neighbor',
+      'Caregiver',
+      'Other'
+    ];
 
-      if (name.isEmpty ||
-          name.toLowerCase() == 'unknown' ||
-          name.toLowerCase() == 'unassigned') {
-        continue;
-      }
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-      if (bestMatch == null) {
-        bestMatch = r as Map<String, dynamic>;
-      } else {
-        final currentConf = (r['confidence'] as num?)?.toDouble() ?? 0.0;
-        final bestConf    = (bestMatch['confidence'] as num?)?.toDouble() ?? 0.0;
-        if (currentConf > bestConf) bestMatch = r as Map<String, dynamic>;
-      }
-    }
-
-    if (bestMatch == null) return _resolveDefaultKnownPersonId(userId);
-
-    final recognizedName         = (bestMatch['name'] as String).trim();
-    final recognizedRelationship = (bestMatch['relationship'] as String?)?.trim() ?? 'unknown';
-
-    final patientRows = await supabase
-        .from('patients')
-        .select('id')
-        .eq('full_name', 'Default Patient')
-        .limit(1);
-
-    late String patientId;
-    if (patientRows.isEmpty) {
-      final ins = await supabase
-          .from('patients')
-          .insert({'full_name': 'Default Patient'})
-          .select('id')
-          .single();
-      patientId = ins['id'] as String;
-    } else {
-      patientId = patientRows[0]['id'] as String;
-    }
-
-    final existingRows = await supabase
-        .from('known_persons')
-        .select('id')
-        .eq('user_id',    userId)
-        .eq('patient_id', patientId)
-        .eq('name',       recognizedName)
-        .limit(1);
-
-    if (existingRows.isNotEmpty) return existingRows[0]['id'] as String;
-
-    final inserted = await supabase
-        .from('known_persons')
-        .insert({
-      'patient_id':   patientId,
-      'name':         recognizedName,
-      'relationship': recognizedRelationship,
-      'user_id':      userId,
-    })
-        .select('id')
-        .single();
-
-    return inserted['id'] as String;
-  }
-
-  Future<void> _showRecognitionDialog(List<dynamic> results) async {
-    await showDialog(
+    await showModalBottomSheet(
       context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A24),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: Colors.white12),
-        ),
-        title: const Row(
-          children: [
-            Icon(Icons.face_retouching_natural, color: Color(0xFF6C63FF), size: 24),
-            SizedBox(width: 10),
-            Text('Recognition Result', style: TextStyle(color: Colors.white, fontSize: 18)),
-          ],
-        ),
-        content: results.isEmpty
-            ? const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.help_outline_rounded, color: Colors.white38, size: 48),
-            SizedBox(height: 12),
-            Text('No faces recognized', style: TextStyle(color: Colors.white60, fontSize: 15)),
-          ],
-        )
-            : Column(
-          mainAxisSize: MainAxisSize.min,
-          children: results.map((r) {
-            final confidence = r['confidence'] ?? 0;
-            final pct = (confidence is num)
-                ? '${(confidence * 100).toStringAsFixed(1)}%'
-                : confidence.toString();
-            return Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: const Color(0xFF6C63FF).withOpacity(0.15),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF6C63FF).withOpacity(0.3)),
-              ),
-              child: Row(
-                children: [
-                  const CircleAvatar(
-                    radius: 18,
-                    backgroundColor: Color(0xFF6C63FF),
-                    child: Icon(Icons.person, color: Colors.white, size: 18),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(r['name'] ?? 'Unknown',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
-                        const SizedBox(height: 2),
-                        Text('Confidence: $pct',
-                            style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }).toList(),
-        ),
-        actions: [
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF6C63FF),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      isScrollControlled: true,
+      backgroundColor: isDark ? const Color(0xFF14141E) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          return Padding(
+            padding: EdgeInsets.only(
+              left: 24,
+              right: 24,
+              top: 24,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
             ),
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.person_add_rounded, color: Color(0xFFFFB238)),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Save Unknown Face',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: nameController,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: 'Name',
+                    hintText: 'Enter person\'s name',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedRelationship,
+                  decoration: InputDecoration(
+                    labelText: 'Relationship',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  items: relationships.map((rel) {
+                    return DropdownMenuItem(value: rel, child: Text(rel));
+                  }).toList(),
+                  onChanged: (val) {
+                    if (val != null) setSheetState(() => selectedRelationship = val);
+                  },
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF6C63FF),
+                          foregroundColor: Colors.white,
+                        ),
+                        onPressed: isSaving
+                            ? null
+                            : () async {
+                                final name = nameController.text.trim();
+                                if (name.isEmpty) {
+                                  ScaffoldMessenger.of(ctx).showSnackBar(
+                                    const SnackBar(content: Text('Please enter a name first.')),
+                                  );
+                                  return;
+                                }
+
+                                setSheetState(() => isSaving = true);
+                                try {
+                                  // POST /person
+                                  await ApiService.instance.createPersonWithFace(
+                                    name: name,
+                                    relationship: selectedRelationship,
+                                    imageFile: _selectedFile!,
+                                  );
+
+                                  if (mounted) {
+                                    Navigator.pop(ctx);
+                                    _showSnack('✅ Saved $name!');
+                                    // Re-run face recognition to show updated name box
+                                    _runFaceRecognition();
+                                  }
+                                } catch (e) {
+                                  setSheetState(() => isSaving = false);
+                                  ScaffoldMessenger.of(ctx).showSnackBar(
+                                    SnackBar(content: Text('Failed to save person: $e')),
+                                  );
+                                }
+                              },
+                        icon: isSaving
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.check_rounded),
+                        label: Text(isSaving ? 'Saving…' : 'Save Person'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
 
-  Future<String> _resolveDefaultKnownPersonId(String userId) async {
-    final patientRows = await supabase
-        .from('patients')
-        .select('id')
-        .eq('full_name', 'Default Patient')
-        .limit(1);
-
-    late String patientId;
-    if (patientRows.isEmpty) {
-      final ins = await supabase
-          .from('patients')
-          .insert({'full_name': 'Default Patient'})
-          .select('id')
-          .single();
-      patientId = ins['id'] as String;
-    } else {
-      patientId = patientRows[0]['id'] as String;
-    }
-
-    final personRows = await supabase
-        .from('known_persons')
-        .select('id')
-        .eq('patient_id', patientId)
-        .eq('name', 'Unassigned')
-        .limit(1);
-
-    if (personRows.isEmpty) {
-      final ins = await supabase
-          .from('known_persons')
-          .insert({
-        'patient_id':   patientId,
-        'name':         'Unassigned',
-        'relationship': 'unknown',
-        'user_id':      userId,
-      })
-          .select('id')
-          .single();
-      return ins['id'] as String;
-    }
-    return personRows[0]['id'] as String;
-  }
-
   void _showSnack(String msg) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+
+  Widget _buildImageOverlay(BuildContext context) {
+    if (_selectedFile == null) {
+      return const _EmptyPreview();
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final containerW = constraints.maxWidth;
+        final containerH = constraints.maxHeight;
+
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            // 1. Image
+            ClipRRect(
+              borderRadius: BorderRadius.circular(22),
+              child: Image.file(
+                _selectedFile!,
+                fit: BoxFit.contain,
+                width: containerW,
+                height: containerH,
+              ),
+            ),
+
+            // 2. Loading Spinner Overlay
+            if (_isIdentifying)
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.black45,
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                child: const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(color: Color(0xFF6C63FF)),
+                      SizedBox(height: 12),
+                      Text(
+                        'Identifying face(s)…',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // 3. Face Bounding Boxes Overlay (§11.1)
+            if (!_isIdentifying)
+              ..._recognizedFaces.map((face) {
+                final imgW = (face['image_width'] as num?)?.toDouble() ?? 1.0;
+                final imgH = (face['image_height'] as num?)?.toDouble() ?? 1.0;
+                final loc = (face['location'] as List?) ?? [0, 0, 0, 0];
+
+                final top = (loc[0] as num).toDouble();
+                final right = (loc[1] as num).toDouble();
+                final bottom = (loc[2] as num).toDouble();
+                final left = (loc[3] as num).toDouble();
+
+                final confidence = (face['confidence'] as num?)?.toDouble() ?? 0.0;
+                final name = (face['name'] as String?) ?? 'Unknown';
+                final personId = face['person_id'] as String?;
+
+                // Unknown face criteria (§11.1)
+                final bool isUnknown = name == 'Unknown' || personId == null || confidence < 0.6;
+
+                // Scale factor for BoxFit.contain
+                final scale = math.min(containerW / imgW, containerH / imgH);
+                final offsetX = (containerW - (imgW * scale)) / 2;
+                final offsetY = (containerH - (imgH * scale)) / 2;
+
+                final boxLeft = offsetX + (left * scale);
+                final boxTop = offsetY + (top * scale);
+                final boxW = (right - left) * scale;
+                final boxH = (bottom - top) * scale;
+
+                final boxColor = isUnknown ? const Color(0xFFFFB238) : const Color(0xFF3DFBD1);
+                final labelText = isUnknown
+                    ? 'Unmatched (${(confidence * 100).toStringAsFixed(0)}%)'
+                    : '$name (${(confidence * 100).toStringAsFixed(0)}%)';
+
+                return Positioned(
+                  left: boxLeft.clamp(0, containerW - 10),
+                  top: boxTop.clamp(0, containerH - 10),
+                  width: boxW.clamp(10, containerW),
+                  height: boxH.clamp(10, containerH),
+                  child: GestureDetector(
+                    onTap: () {
+                      if (isUnknown) {
+                        _openSavePersonSheet();
+                      } else {
+                        _showSnack('Recognized: $name (${(confidence * 100).toStringAsFixed(0)}%)');
+                      }
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: boxColor,
+                          width: 2.5,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Positioned(
+                            top: -24,
+                            left: -2,
+                            child: Material(
+                              color: Colors.transparent,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: boxColor,
+                                  borderRadius: BorderRadius.circular(6),
+                                  boxShadow: const [
+                                    BoxShadow(color: Colors.black26, blurRadius: 4),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      labelText,
+                                      style: const TextStyle(
+                                        color: Colors.black,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    if (isUnknown) ...[
+                                      const SizedBox(width: 4),
+                                      const Icon(Icons.person_add_rounded, size: 12, color: Colors.black),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+          ],
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textColor = isDark ? Colors.white : const Color(0xFF1A1A24);
     final iconColor = isDark ? Colors.white70 : const Color(0xFF1A1A24);
-    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text('PersonaLens',
+        title: Text('PersonaLens Vision',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: textColor, letterSpacing: 1.2)),
         actions: [
           ValueListenableBuilder<ThemeMode>(
@@ -427,71 +477,57 @@ class _UploadPageState extends State<UploadPage> {
                 },
               ),
               const SizedBox(height: 20),
+
+              // Main Photo Box with Bounding Box Overlay
               Expanded(
-                child: GestureDetector(
-                  onTap: () => _pickImage(ImageSource.gallery),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 300),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A24),
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(
-                        color: _selectedFile != null ? const Color(0xFF6C63FF) : Colors.white12,
-                        width: 2,
-                      ),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(22),
-                      child: _selectedFile != null
-                          ? Image.file(_selectedFile!, fit: BoxFit.cover, width: double.infinity)
-                          : const _EmptyPreview(),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A24),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: _selectedFile != null ? const Color(0xFF6C63FF) : Colors.white12,
+                      width: 2,
                     ),
                   ),
+                  child: _buildImageOverlay(context),
                 ),
               ),
+
               const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(child: _SourceButton(icon: Icons.photo_rounded, label: 'Gallery', onTap: () => _pickImage(ImageSource.gallery))),
-                  const SizedBox(width: 12),
-                  Expanded(child: _SourceButton(icon: Icons.camera_alt_rounded, label: 'Camera', onTap: () => _pickImage(ImageSource.camera))),
-                ],
-              ),
-              const SizedBox(height: 16),
-              if (_isUploading) ...[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: LinearProgressIndicator(
-                    value: _uploadProgress,
-                    backgroundColor: Colors.white10,
-                    valueColor: AlwaysStoppedAnimation(cs.primary),
-                    minHeight: 6,
-                  ),
-                ),
-                const SizedBox(height: 10),
-              ],
+
+              // Status Message
               if (_statusMessage != null)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Text(_statusMessage!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white60)),
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    _statusMessage!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: _statusMessage!.startsWith('No face') ? Colors.amberAccent : Colors.white70,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
-              FilledButton.icon(
-                onPressed: _isUploading ? null : _uploadAndSave,
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF6C63FF),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-                icon: _isUploading
-                    ? const SizedBox(width: 18, height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.cloud_upload_rounded),
-                label: Text(
-                  _isUploading ? 'Processing…' : 'Upload & Recognize',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                ),
+
+              // Gallery & Camera Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: _SourceButton(
+                      icon: Icons.photo_rounded,
+                      label: 'Choose Photo',
+                      onTap: () => _pickImage(ImageSource.gallery),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _SourceButton(
+                      icon: Icons.camera_alt_rounded,
+                      label: 'Take Photo',
+                      onTap: () => _pickImage(ImageSource.camera),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
             ],
@@ -649,15 +685,19 @@ class _ImageGalleryPageState extends State<ImageGalleryPage> {
   }
 
   Future<void> _deleteImage(String id, String imageUrl) async {
-    final uri      = Uri.parse(imageUrl);
-    final segments = uri.pathSegments;
-    final facesIdx = segments.indexOf('faces');
-    final filePath = facesIdx != -1
-        ? segments.sublist(facesIdx + 1).join('/')
-        : segments.last;
-
     try {
-      await supabase.storage.from('faces').remove([filePath]);
+      try {
+        final uri      = Uri.parse(imageUrl);
+        final segments = uri.pathSegments;
+        final facesIdx = segments.indexOf('faces');
+        final filePath = facesIdx != -1
+            ? segments.sublist(facesIdx + 1).join('/')
+            : segments.last;
+        await supabase.storage.from('faces').remove([filePath]);
+      } catch (storageErr) {
+        debugPrint('Storage remove skipped/failed: $storageErr');
+      }
+
       await supabase.from('face_embeddings').delete().eq('id', id);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('🗑️ Image deleted')));

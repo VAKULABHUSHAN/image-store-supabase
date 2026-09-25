@@ -79,16 +79,20 @@ class ApiService {
     return false;
   }
 
-  // 5. POST /recognize
-  Future<List<Map<String, dynamic>>> recognizeFace(File imageFile) async {
+  // 5. POST /recognize?wait=true
+  Future<List<Map<String, dynamic>>> recognizeFace(File imageFile, {bool wait = true}) async {
     try {
       final headers = await _getAuthHeaders();
-      final request = http.MultipartRequest('POST', Uri.parse('$_baseUrl/recognize'));
+      final uri = Uri.parse('$_baseUrl/recognize?wait=$wait');
+      final request = http.MultipartRequest('POST', uri);
       request.headers.addAll(headers);
+
+      final ext = imageFile.path.toLowerCase();
+      final subType = ext.endsWith('.png') ? 'png' : 'jpeg';
       request.files.add(await http.MultipartFile.fromPath(
         'file',
         imageFile.path,
-        contentType: MediaType('image', 'jpeg'),
+        contentType: MediaType('image', subType),
       ));
 
       final streamedRes = await request.send();
@@ -96,11 +100,82 @@ class ApiService {
       if (res.statusCode == 200) {
         final List list = jsonDecode(res.body);
         return list.cast<Map<String, dynamic>>();
+      } else {
+        print('recognizeFace error ${res.statusCode}: ${res.body}');
       }
     } catch (e) {
       print('recognizeFace error: $e');
     }
     return [];
+  }
+
+  // POST /person (Create new person with face photo)
+  Future<Map<String, dynamic>?> createPersonWithFace({
+    required String name,
+    String? relationship,
+    required File imageFile,
+  }) async {
+    try {
+      final headers = await _getAuthHeaders();
+      final request = http.MultipartRequest('POST', Uri.parse('$_baseUrl/person'));
+      request.headers.addAll(headers);
+      request.fields['name'] = name;
+      if (relationship != null && relationship.isNotEmpty) {
+        request.fields['relationship'] = relationship;
+      }
+      final ext = imageFile.path.toLowerCase();
+      final subType = ext.endsWith('.png') ? 'png' : 'jpeg';
+      request.files.add(await http.MultipartFile.fromPath(
+        'file',
+        imageFile.path,
+        contentType: MediaType('image', subType),
+      ));
+
+      final streamedRes = await request.send();
+      final res = await http.Response.fromStream(streamedRes);
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      } else {
+        final err = jsonDecode(res.body);
+        throw Exception(err['detail'] ?? 'Failed to save person.');
+      }
+    } catch (e) {
+      print('createPersonWithFace error: $e');
+      rethrow;
+    }
+  }
+
+  // POST /add-face (Add face photo to an existing person)
+  Future<Map<String, dynamic>?> addFaceToPerson({
+    required String personId,
+    required File imageFile,
+  }) async {
+    try {
+      final headers = await _getAuthHeaders();
+      final request = http.MultipartRequest('POST', Uri.parse('$_baseUrl/add-face'));
+      request.headers.addAll(headers);
+      request.fields['person_id'] = personId;
+
+      final ext = imageFile.path.toLowerCase();
+      final subType = ext.endsWith('.png') ? 'png' : 'jpeg';
+      request.files.add(await http.MultipartFile.fromPath(
+        'file',
+        imageFile.path,
+        contentType: MediaType('image', subType),
+      ));
+
+      final streamedRes = await request.send();
+      final res = await http.Response.fromStream(streamedRes);
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      } else {
+        final err = jsonDecode(res.body);
+        throw Exception(err['detail'] ?? 'Failed to add face.');
+      }
+    } catch (e) {
+      print('addFaceToPerson error: $e');
+      rethrow;
+    }
   }
 
   // 6. POST /session/start
