@@ -2,8 +2,6 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import 'api_service.dart';
 import 'Auth/login.dart';
 import 'main.dart';
@@ -323,11 +321,12 @@ class _UploadPageState extends State<UploadPage> {
                 final left = (loc[3] as num).toDouble();
 
                 final confidence = (face['confidence'] as num?)?.toDouble() ?? 0.0;
-                final name = (face['name'] as String?) ?? 'Unknown';
+                final bool isSelf = face['is_self'] == true;
+                final name = isSelf ? 'You' : ((face['name'] as String?) ?? 'Unknown');
                 final personId = face['person_id'] as String?;
 
                 // Unknown face criteria (§11.1)
-                final bool isUnknown = name == 'Unknown' || personId == null || confidence < 0.6;
+                final bool isUnknown = !isSelf && (name == 'Unknown' || personId == null || confidence < 0.6);
 
                 // Scale factor for BoxFit.contain
                 final scale = math.min(containerW / imgW, containerH / imgH);
@@ -339,10 +338,14 @@ class _UploadPageState extends State<UploadPage> {
                 final boxW = (right - left) * scale;
                 final boxH = (bottom - top) * scale;
 
-                final boxColor = isUnknown ? const Color(0xFFFFB238) : const Color(0xFF3DFBD1);
-                final labelText = isUnknown
-                    ? 'Unmatched (${(confidence * 100).toStringAsFixed(0)}%)'
-                    : '$name (${(confidence * 100).toStringAsFixed(0)}%)';
+                final boxColor = isSelf
+                    ? const Color(0xFF6C63FF)
+                    : (isUnknown ? const Color(0xFFFFB238) : const Color(0xFF3DFBD1));
+                final labelText = isSelf
+                    ? 'You (${(confidence * 100).toStringAsFixed(0)}%)'
+                    : (isUnknown
+                        ? 'Unmatched (${(confidence * 100).toStringAsFixed(0)}%)'
+                        : '$name (${(confidence * 100).toStringAsFixed(0)}%)');
 
                 return Positioned(
                   left: boxLeft.clamp(0, containerW - 10),
@@ -1227,12 +1230,12 @@ class _GalleryTile extends StatelessWidget {
         : '${ApiService.instance.baseUrl}$rawThumbUrl';
 
     final List faces = (image['faces'] as List?) ?? [];
-    final bool hasUnidentified = faces.any((f) => f['person_id'] == null);
+    final bool hasUnidentified = faces.any((f) => f['person_id'] == null && f['is_self'] != true);
     final String? caption = image['caption'] as String?;
 
     // Collect face names
     final faceNames = faces
-        .map((f) => (f['person_name'] as String?) ?? 'Unidentified')
+        .map((f) => f['is_self'] == true ? 'You' : ((f['person_name'] as String?) ?? 'Unidentified'))
         .where((n) => n.isNotEmpty)
         .take(2)
         .join(', ');
@@ -1419,7 +1422,6 @@ class _GalleryImageDetailSheet extends StatefulWidget {
 
 class _GalleryImageDetailSheetState extends State<_GalleryImageDetailSheet> {
   Map<String, dynamic>? _image;
-  bool _isLoading = true;
   bool _isDeleting = false;
 
   @override
@@ -1435,14 +1437,9 @@ class _GalleryImageDetailSheetState extends State<_GalleryImageDetailSheet> {
       if (detail != null && mounted) {
         setState(() {
           _image = detail;
-          _isLoading = false;
         });
-      } else if (_image != null && mounted) {
-        setState(() => _isLoading = false);
       }
-    } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
-    }
+    } catch (_) {}
   }
 
   Future<void> _deleteImage() async {
@@ -1633,8 +1630,9 @@ class _GalleryImageDetailSheetState extends State<_GalleryImageDetailSheet> {
                                     final double width = (rightPx - leftPx) * scaleX;
                                     final double height = (bottomPx - topPx) * scaleY;
 
-                                    final bool isUnidentified = f['person_id'] == null;
-                                    final String name = f['person_name'] as String? ?? 'Who is this?';
+                                    final bool isSelf = f['is_self'] == true;
+                                    final bool isUnidentified = f['person_id'] == null && !isSelf;
+                                    final String name = isSelf ? 'You' : (f['person_name'] as String? ?? 'Who is this?');
 
                                     return Positioned(
                                       top: top,
@@ -1642,15 +1640,19 @@ class _GalleryImageDetailSheetState extends State<_GalleryImageDetailSheet> {
                                       width: width,
                                       height: height,
                                       child: GestureDetector(
-                                        onTap: () => _openAssignDialog(Map<String, dynamic>.from(f)),
+                                        onTap: isSelf ? null : () => _openAssignDialog(Map<String, dynamic>.from(f)),
                                         child: Container(
                                           decoration: BoxDecoration(
                                             border: Border.all(
-                                              color: isUnidentified ? Colors.orangeAccent : const Color(0xFF6C63FF),
+                                              color: isSelf
+                                                  ? const Color(0xFF6C63FF)
+                                                  : (isUnidentified ? Colors.orangeAccent : const Color(0xFF3DFBD1)),
                                               width: 2.0,
                                             ),
                                             borderRadius: BorderRadius.circular(6),
-                                            color: (isUnidentified ? Colors.orange : const Color(0xFF6C63FF))
+                                            color: (isSelf
+                                                    ? const Color(0xFF6C63FF)
+                                                    : (isUnidentified ? Colors.orange : const Color(0xFF3DFBD1)))
                                                 .withOpacity(0.15),
                                           ),
                                           child: Stack(
@@ -1662,7 +1664,9 @@ class _GalleryImageDetailSheetState extends State<_GalleryImageDetailSheet> {
                                                 child: Container(
                                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                                   decoration: BoxDecoration(
-                                                    color: isUnidentified ? Colors.orange.shade900 : const Color(0xFF6C63FF),
+                                                    color: isSelf
+                                                        ? const Color(0xFF6C63FF)
+                                                        : (isUnidentified ? Colors.orange.shade900 : const Color(0xFF1F1F30)),
                                                     borderRadius: BorderRadius.circular(4),
                                                   ),
                                                   child: Text(
@@ -1721,8 +1725,9 @@ class _GalleryImageDetailSheetState extends State<_GalleryImageDetailSheet> {
                       Column(
                         children: faces.map((f) {
                           final map = Map<String, dynamic>.from(f);
-                          final bool isUnidentified = map['person_id'] == null;
-                          final String name = map['person_name'] as String? ?? 'Unidentified Face';
+                          final bool isSelf = map['is_self'] == true;
+                          final bool isUnidentified = map['person_id'] == null && !isSelf;
+                          final String name = isSelf ? 'You (Host)' : (map['person_name'] as String? ?? 'Unidentified Face');
                           final double confidence = ((map['confidence'] as num?)?.toDouble() ?? 0.0) * 100;
                           final String source = map['source'] as String? ?? 'cloud';
 
@@ -1733,15 +1738,21 @@ class _GalleryImageDetailSheetState extends State<_GalleryImageDetailSheet> {
                               color: const Color(0xFF161622),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: isUnidentified ? Colors.orangeAccent.withOpacity(0.5) : Colors.white12,
+                                color: isSelf
+                                    ? const Color(0xFF6C63FF).withOpacity(0.6)
+                                    : (isUnidentified ? Colors.orangeAccent.withOpacity(0.5) : Colors.white12),
                               ),
                             ),
                             child: Row(
                               children: [
                                 CircleAvatar(
-                                  backgroundColor: isUnidentified ? Colors.orange.shade900 : const Color(0xFF6C63FF),
+                                  backgroundColor: isSelf
+                                      ? const Color(0xFF6C63FF)
+                                      : (isUnidentified ? Colors.orange.shade900 : const Color(0xFF1F1F30)),
                                   child: Icon(
-                                    isUnidentified ? Icons.help_outline_rounded : Icons.person_rounded,
+                                    isSelf
+                                        ? Icons.face_rounded
+                                        : (isUnidentified ? Icons.help_outline_rounded : Icons.person_rounded),
                                     color: Colors.white,
                                   ),
                                 ),
@@ -1755,7 +1766,9 @@ class _GalleryImageDetailSheetState extends State<_GalleryImageDetailSheet> {
                                         style: TextStyle(
                                           fontSize: 15,
                                           fontWeight: FontWeight.bold,
-                                          color: isUnidentified ? Colors.orangeAccent : Colors.white,
+                                          color: isSelf
+                                              ? const Color(0xFF6C63FF)
+                                              : (isUnidentified ? Colors.orangeAccent : Colors.white),
                                         ),
                                       ),
                                       const SizedBox(height: 2),
@@ -1766,24 +1779,26 @@ class _GalleryImageDetailSheetState extends State<_GalleryImageDetailSheet> {
                                     ],
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                FilledButton.icon(
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: isUnidentified ? Colors.orange.shade800 : const Color(0xFF1F1F30),
-                                    foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                if (!isSelf) ...[
+                                  const SizedBox(width: 8),
+                                  FilledButton.icon(
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: isUnidentified ? Colors.orange.shade800 : const Color(0xFF1F1F30),
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    ),
+                                    icon: Icon(
+                                      isUnidentified ? Icons.edit_rounded : Icons.swap_horiz_rounded,
+                                      size: 16,
+                                    ),
+                                    label: Text(
+                                      isUnidentified ? 'Who is this?' : 'Reassign',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                    onPressed: () => _openAssignDialog(map),
                                   ),
-                                  icon: Icon(
-                                    isUnidentified ? Icons.edit_rounded : Icons.swap_horiz_rounded,
-                                    size: 16,
-                                  ),
-                                  label: Text(
-                                    isUnidentified ? 'Who is this?' : 'Reassign',
-                                    style: const TextStyle(fontSize: 12),
-                                  ),
-                                  onPressed: () => _openAssignDialog(map),
-                                ),
+                                ],
                               ],
                             ),
                           );

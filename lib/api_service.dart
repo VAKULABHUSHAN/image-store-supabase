@@ -345,6 +345,86 @@ class ApiService {
     return [];
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // SECTION 6: HOST PROFILE & ENROLLMENT ENDPOINTS
+  // ═══════════════════════════════════════════════════════════════
+
+  // 1. GET /host
+  Future<Map<String, dynamic>?> getHost() async {
+    try {
+      final headers = await getAuthHeaders();
+      final res = await http.get(Uri.parse('$_baseUrl/host'), headers: headers);
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      print('getHost error: $e');
+    }
+    return null;
+  }
+
+  // 2. POST /host/face
+  Future<Map<String, dynamic>?> enrollHostFace(File imageFile, {bool replace = false}) async {
+    try {
+      final headers = await getAuthHeaders();
+      final request = http.MultipartRequest('POST', Uri.parse('$_baseUrl/host/face'));
+      request.headers.addAll(headers);
+      request.fields['replace'] = replace ? 'true' : 'false';
+
+      final ext = imageFile.path.toLowerCase();
+      final subType = ext.endsWith('.png') ? 'png' : 'jpeg';
+      request.files.add(await http.MultipartFile.fromPath(
+        'file',
+        imageFile.path,
+        contentType: MediaType('image', subType),
+      ));
+
+      final streamedRes = await request.send();
+      final res = await http.Response.fromStream(streamedRes);
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      } else {
+        final err = jsonDecode(res.body);
+        throw Exception(err['detail'] ?? 'Host face enrollment failed.');
+      }
+    } catch (e) {
+      print('enrollHostFace error: $e');
+      rethrow;
+    }
+  }
+
+  // 3. DELETE /host/face
+  Future<bool> deleteHostFace() async {
+    try {
+      final headers = await getAuthHeaders();
+      final request = http.Request('DELETE', Uri.parse('$_baseUrl/host/face'))..headers.addAll(headers);
+      final streamedRes = await request.send();
+      final res = await http.Response.fromStream(streamedRes);
+      return res.statusCode == 200;
+    } catch (e) {
+      print('deleteHostFace error: $e');
+      return false;
+    }
+  }
+
+  // 4. PUT /host
+  Future<Map<String, dynamic>?> updateHostName(String name) async {
+    try {
+      final headers = await getAuthHeaders();
+      final res = await http.put(
+        Uri.parse('$_baseUrl/host'),
+        headers: {...headers, 'Content-Type': 'application/x-www-form-urlencoded'},
+        body: {'name': name},
+      );
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      print('updateHostName error: $e');
+    }
+    return null;
+  }
+
   // 6. POST /session/start
   Future<Map<String, dynamic>?> startSession(String mode) async {
     try {
