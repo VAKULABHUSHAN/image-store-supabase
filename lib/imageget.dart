@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'Auth/login.dart';
 import 'main.dart';
+import 'profile_page.dart';
 
 class StoreImg extends StatelessWidget {
   const StoreImg({super.key});
@@ -398,6 +399,12 @@ class _UploadPageState extends State<UploadPage> {
             tooltip: 'View Gallery',
             onPressed: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const ImageGalleryPage())),
+          ),
+          IconButton(
+            icon: Icon(Icons.person_rounded, color: iconColor),
+            tooltip: 'View Profile',
+            onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const ProfileScreen())),
           ),
         ],
       ),
@@ -1421,51 +1428,58 @@ class _ProfileCard extends StatelessWidget {
     final subText = isDark ? Colors.white38 : const Color(0xFF777788);
     final cardBorder = isDark ? Colors.white12 : Colors.black12;
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: cardBorder),
-        boxShadow: isDark
-            ? []
-            : [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+    return InkWell(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const ProfileScreen()),
       ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 24,
-            backgroundColor: const Color(0xFF6C63FF),
-            child: Text(
-              (email != null && email!.isNotEmpty) ? email![0].toUpperCase() : '?',
-              style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: cardBorder),
+          boxShadow: isDark
+              ? []
+              : [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 24,
+              backgroundColor: const Color(0xFF6C63FF),
+              child: Text(
+                (email != null && email!.isNotEmpty) ? email![0].toUpperCase() : '?',
+                style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Logged in as', style: TextStyle(color: subText, fontSize: 12)),
-                const SizedBox(height: 4),
-                Text(email ?? 'Loading…',
-                    style: TextStyle(color: primaryText, fontSize: 15, fontWeight: FontWeight.w600),
-                    overflow: TextOverflow.ellipsis),
-              ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Logged in as', style: TextStyle(color: subText, fontSize: 12)),
+                  const SizedBox(height: 4),
+                  Text(email ?? 'Loading…',
+                      style: TextStyle(color: primaryText, fontSize: 15, fontWeight: FontWeight.w600),
+                      overflow: TextOverflow.ellipsis),
+                ],
+              ),
             ),
-          ),
-          IconButton(
-            onPressed: onLogout,
-            icon: Icon(Icons.logout, color: isDark ? Colors.redAccent : Colors.red),
-            tooltip: 'Logout',
-          ),
-        ],
+            IconButton(
+              onPressed: onLogout,
+              icon: Icon(Icons.logout, color: isDark ? Colors.redAccent : Colors.red),
+              tooltip: 'Logout',
+            ),
+          ],
+        ),
       ),
     );
   }
